@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blue Archive Interactive Wallpaper - Characters Edition</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: linear-gradient(135deg, #0a1428 0%, #1a3a52 50%, #0d2340 100%);
+            font-family: 'Arial', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .info-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #00d4ff;
+            padding: 15px 20px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-family: 'Courier New', monospace;
+            border: 2px solid #00d4ff;
+            box-shadow: 0 0 20px rgba(0, 212, 255, 0.3);
+        }
+
+        .controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            flex-direction: column;
+        }
+
+        button {
+            background: rgba(0, 212, 255, 0.2);
+            color: #00d4ff;
+            border: 2px solid #00d4ff;
+            padding: 8px 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.3s ease;
+            min-width: 100px;
+        }
+
+        button:hover {
+            background: rgba(0, 212, 255, 0.4);
+            box-shadow: 0 0 15px rgba(0, 212, 255, 0.5);
+        }
+
+        .particle-count {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #00d4ff;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-size: 11px;
+            border: 1px solid #00d4ff;
+        }
+
+        .volume-control {
+            position: absolute;
+            top: 20px;
+            left: 220px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #00d4ff;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #00d4ff;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            font-size: 11px;
+        }
+
+        .volume-control input {
+            width: 100px;
+            cursor: pointer;
+        }
+
+        .character-indicator {
+            position: absolute;
+            top: 80px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #00d4ff;
+            padding: 12px 16px;
+            border-radius: 5px;
+            border: 2px solid #00d4ff;
+            font-size: 11px;
+            text-align: center;
+            box-shadow: 0 0 15px rgba(0, 212, 255, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div class="particle-count">Hạt: <span id="particleCount">0</span> | Nhân vật: <span id="characterCount">0</span></div>
+    
+    <div class="volume-control">
+        🔊 Âm lượng: <input type="range" id="volumeSlider" min="0" max="100" value="50">
+    </div>
+    
+    <div class="controls">
+        <button id="toggleAnimation">⏸ Dừng</button>
+        <button id="clearParticles">🗑️ Xóa</button>
+        <button id="toggleMode">🎨 Chế độ</button>
+        <button id="toggleSound">🔇 Âm thanh</button>
+        <button id="addCharacter">➕ Nhân vật</button>
+    </div>
+
+    <div class="character-indicator">
+        <div>👤 <span id="currentCharacter">Serika</span></div>
+        <div id="characterStatus">Sẵn sàng</div>
+    </div>
+
+    <div class="info-panel">
+        <div>💻 Di chuyển chuột để tương tác</div>
+        <div>🖱️ Nhấp chuột để tạo hiệu ứng</div>
+        <div>➕ Thêm nhân vật để nhảy</div>
+        <div>FPS: <span id="fps">60</span></div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // ============ SỬ DỤC ÂM THANH ============
+        class SoundManager {
+            constructor() {
+                this.volume = 0.5;
+                this.enabled = true;
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                this.masterGain = this.audioContext.createGain();
+                this.masterGain.connect(this.audioContext.destination);
+                this.masterGain.gain.value = this.volume;
+            }
+
+            playSound(type, frequency = 400, duration = 0.1) {
+                if (!this.enabled) return;
+
+                try {
+                    const osc = this.audioContext.createOscillator();
+                    const gain = this.audioContext.createGain();
+                    
+                    osc.connect(gain);
+                    gain.connect(this.masterGain);
+
+                    if (type === 'click') {
+                        osc.frequency.setValueAtTime(600, this.audioContext.currentTime);
+                        osc.frequency.exponentialRampToValueAtTime(200, this.audioContext.currentTime + duration);
+                        gain.gain.setValueAtTime(0.3, this.audioContext.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
+                    } else if (type === 'jump') {
+                        osc.frequency.setValueAtTime(800, this.audioContext.currentTime);
+                        osc.frequency.exponentialRampToValueAtTime(400, this.audioContext.currentTime + duration);
+                        gain.gain.setValueAtTime(0.2, this.audioContext.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
+                    } else if (type === 'particle') {
+                        osc.frequency.setValueAtTime(frequency, this.audioContext.currentTime);
+                        gain.gain.setValueAtTime(0.15, this.audioContext.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration * 0.5);
+                    }
+
+                    osc.start(this.audioContext.currentTime);
+                    osc.stop(this.audioContext.currentTime + duration);
+                } catch (e) {
+                    console.log('Audio error:', e);
+                }
+            }
+
+            setVolume(value) {
+                this.volume = value / 100;
+                this.masterGain.gain.value = this.volume;
+            }
+
+            toggle() {
+                this.enabled = !this.enabled;
+                return this.enabled;
+            }
+        }
+
+        // ============ CÁCH CẤU HÌNH ============
+        let config = {
+            particleCount: 0,
+            isAnimating: true,
+            mode: 'blue',
+            gravity: 0.2,
+            friction: 0.99,
+            soundEnabled: true
+        };
+
+        let mouse = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            isPressed: false
+        };
+
+        const soundManager = new SoundManager();
+        let particles = [];
+        let characters = [];
+
+        // ============ CLASS HẠT ============
+        class Particle {
+            constructor(x, y, vx = 0, vy = 0, type = 'normal') {
+                this.x = x;
+                this.y = y;
+                this.vx = vx || (Math.random() - 0.5) * 8;
+                this.vy = vy || (Math.random() - 0.5) * 8 - 2;
+                this.type = type;
+                this.size = Math.random() * 3 + 1;
+                this.life = 1;
+                this.maxLife = Math.random() * 100 + 50;
+                this.rotation = 0;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += config.gravity;
+                this.vx *= config.friction;
+                this.vy *= config.friction;
+
+                this.life--;
+                this.rotation += this.rotationSpeed;
+
+                if (this.x < 0 || this.x > canvas.width) this.vx *= -0.8;
+                if (this.y < 0 || this.y > canvas.height) this.vy *= -0.8;
+
+                this.x = Math.max(0, Math.min(canvas.width, this.x));
+                this.y = Math.max(0, Math.min(canvas.height, this.y));
+            }
+
+            draw() {
+                const alpha = Math.min(1, this.life / 20);
+                
+                if (this.type === 'circle') {
+                    ctx.fillStyle = `rgba(0, 212, 255, ${alpha * 0.6})`;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.strokeStyle = `rgba(0, 212, 255, ${alpha})`;
+                    ctx.lineWidth = 1;
+                    ctx.stroke();
+                } else {
+                    ctx.save();
+                    ctx.translate(this.x, this.y);
+                    ctx.rotate(this.rotation);
+
+                    ctx.fillStyle = this.getColor(alpha);
+                    ctx.fillRect(-this.size / 2, -this.size / 2, this.size, this.size);
+
+                    ctx.restore();
+                }
+            }
+
+            getColor(alpha) {
+                const colors = {
+                    blue: `rgba(0, 212, 255, ${alpha * 0.8})`,
+                    pink: `rgba(255, 105, 180, ${alpha * 0.8})`,
+                    purple: `rgba(147, 51, 234, ${alpha * 0.8})`
+                };
+                return colors[config.mode] || colors.blue;
+            }
+        }
+
+        // ============ CLASS NHÂN VẬT ============
+        class Character {
+            constructor(x, y, name = 'Serika') {
+                this.x = x;
+                this.y = y;
+                this.name = name;
+                this.width = 40;
+                this.height = 50;
+                this.vx = 0;
+                this.vy = 0;
+                this.jumping = false;
+                this.jumpPower = 15;
+                this.targetX = x;
+                this.animationFrame = 0;
+                this.direction = 1; // 1 = phải, -1 = trái
+                this.colors = this.getColorScheme();
+            }
+
+            getColorScheme() {
+                const schemes = {
+                    'Serika': { head: '#ffd4a3', body: '#ff69b4', hair: '#ff1493' },
+                    'Aru': { head: '#f5d5b8', body: '#4169e1', hair: '#1e90ff' },
+                    'Hina': { head: '#ffd7b5', body: '#ff6347', hair: '#ff4500' },
+                    'Momoi': { head: '#ffc0cb', body: '#ff1493', hair: '#c71585' }
+                };
+                return schemes[name] || schemes['Serika'];
+            }
+
+            update(targetX) {
+                this.targetX = targetX;
+                
+                // Di chuyển theo chuột
+                const dx = this.targetX - this.x;
+                if (Math.abs(dx) > 5) {
+                    this.vx = dx * 0.05;
+                    this.direction = dx > 0 ? 1 : -1;
+                } else {
+                    this.vx *= 0.9;
+                }
+
+                this.x += this.vx;
+                
+                // Giới hạn vị trí
+                this.x = Math.max(this.width / 2, Math.min(canvas.width - this.width / 2, this.x));
+
+                // Nhảy ngẫu nhiên
+                if (!this.jumping && Math.random() < 0.02) {
+                    this.vy = -this.jumpPower;
+                    this.jumping = true;
+                    soundManager.playSound('jump', 600, 0.2);
+                }
+
+                // Gravity
+                if (this.jumping) {
+                    this.vy += 0.6;
+                    this.y += this.vy;
+
+                    if (this.y >= canvas.height - 80) {
+                        this.y = canvas.height - 80;
+                        this.vy = 0;
+                        this.jumping = false;
+                    }
+                }
+
+                this.animationFrame += 0.3;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.scale(this.direction, 1);
+
+                // Đầu
+                ctx.fillStyle = this.colors.head;
+                ctx.beginPath();
+                ctx.arc(0, -20, 12, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Mắt
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.arc(-5, -22, 2, 0, Math.PI * 2);
+                ctx.arc(5, -22, 2, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Miệng
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.arc(0, -18, 4, 0, Math.PI);
+                ctx.stroke();
+
+                // Tóc
+                ctx.fillStyle = this.colors.hair;
+                ctx.beginPath();
+                ctx.ellipse(0, -26, 14, 8, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Thân thể
+                ctx.fillStyle = this.colors.body;
+                ctx.fillRect(-10, -8, 20, 25);
+
+                // Tay
+                ctx.fillRect(-15, -5, 5, 15);
+                ctx.fillRect(10, -5, 5, 15);
+
+                // Chân
+                const legOffset = Math.sin(this.animationFrame) * 2;
+                ctx.fillStyle = '#333';
+                ctx.fillRect(-7, 17 + legOffset, 4, 8);
+                ctx.fillRect(3, 17 - legOffset, 4, 8);
+
+                ctx.restore();
+            }
+        }
+
+        // ============ HÀM TẠOPARTICLES ============
+        function createParticles(x, y, count = 5, type = 'normal') {
+            for (let i = 0; i < count; i++) {
+                const angle = (Math.PI * 2 * i) / count;
+                const speed = 3 + Math.random() * 4;
+                const particle = new Particle(
+                    x + (Math.random() - 0.5) * 20,
+                    y + (Math.random() - 0.5) * 20,
+                    Math.cos(angle) * speed,
+                    Math.sin(angle) * speed - 2,
+                    type
+                );
+                particles.push(particle);
+            }
+            config.particleCount = particles.length;
+            soundManager.playSound('click', 400, 0.1);
+        }
+
+        // ============ VẼ NỀN ============
+        function drawBackground() {
+            ctx.fillStyle = 'rgba(10, 20, 40, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.strokeStyle = `rgba(0, 212, 255, 0.05)`;
+            ctx.lineWidth = 1;
+            const gridSize = 50;
+            
+            for (let x = 0; x < canvas.width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            
+            for (let y = 0; y < canvas.height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+        }
+
+        // ============ VẼ CHUỘT ============
+        function drawMouse() {
+            const distance = 80;
+            ctx.strokeStyle = `rgba(0, 212, 255, 0.3)`;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(mouse.x, mouse.y, distance, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.fillStyle = 'rgba(0, 212, 255, 0.5)';
+            ctx.beginPath();
+            ctx.arc(mouse.x, mouse.y, 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = 'rgba(0, 212, 255, 0.8)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+
+        // ============ VÒNG LẶP CHÍNH ============
+        let lastTime = Date.now();
+        let frameCount = 0;
+
+        function animate() {
+            if (config.isAnimating) {
+                drawBackground();
+
+                // Vẽ hạt
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    particles[i].update();
+                    particles[i].draw();
+
+                    if (particles[i].life <= 0) {
+                        particles.splice(i, 1);
+                    }
+                }
+
+                // Cập nhật nhân vật
+                for (let char of characters) {
+                    char.update(mouse.x);
+                    char.draw();
+                }
+
+                drawMouse();
+
+                // Tạo hạt ngẫu nhiên
+                if (particles.length < 200) {
+                    if (Math.random() < 0.3) {
+                        createParticles(
+                            Math.random() * canvas.width,
+                            Math.random() * canvas.height,
+                            1,
+                            'circle'
+                        );
+                    }
+                }
+            }
+
+            // FPS
+            frameCount++;
+            const now = Date.now();
+            if (now - lastTime > 1000) {
+                document.getElementById('fps').textContent = frameCount;
+                document.getElementById('particleCount').textContent = particles.length;
+                document.getElementById('characterCount').textContent = characters.length;
+                frameCount = 0;
+                lastTime = now;
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // ============ SỰ KIỆN CHUỘT ============
+        canvas.addEventListener('mousemove', (e) => {
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+        });
+
+        canvas.addEventListener('mousedown', () => {
+            mouse.isPressed = true;
+            createParticles(mouse.x, mouse.y, 15, 'normal');
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            mouse.isPressed = false;
+        });
+
+        // ============ NÚT ĐIỀU KHIỂN ============
+        document.getElementById('toggleAnimation').addEventListener('click', function() {
+            config.isAnimating = !config.isAnimating;
+            this.textContent = config.isAnimating ? '⏸ Dừng' : '▶ Chạy';
+        });
+
+        document.getElementById('clearParticles').addEventListener('click', () => {
+            particles = [];
+            config.particleCount = 0;
+        });
+
+        document.getElementById('toggleMode').addEventListener('click', function() {
+            const modes = ['blue', 'pink', 'purple'];
+            const currentIndex = modes.indexOf(config.mode);
+            config.mode = modes[(currentIndex + 1) % modes.length];
+        });
+
+        document.getElementById('toggleSound').addEventListener('click', function() {
+            config.soundEnabled = soundManager.toggle();
+            this.textContent = config.soundEnabled ? '🔊 Âm thanh' : '🔇 Tắt';
+        });
+
+        document.getElementById('volumeSlider').addEventListener('input', (e) => {
+            soundManager.setVolume(e.target.value);
+        });
+
+        document.getElementById('addCharacter').addEventListener('click', function() {
+            const characterNames = ['Serika', 'Aru', 'Hina', 'Momoi'];
+            const randomChar = characterNames[Math.floor(Math.random() * characterNames.length)];
+            const newChar = new Character(
+                Math.random() * (canvas.width - 80) + 40,
+                canvas.height - 80,
+                randomChar
+            );
+            characters.push(newChar);
+            document.getElementById('currentCharacter').textContent = randomChar;
+            document.getElementById('characterStatus').textContent = 'Thêm mới!';
+            
+            if (characters.length > 5) characters.shift();
+        });
+
+        // ============ THAY ĐỔI KÍCH THƯỚC ============
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        // ============ BẮT ĐẦU ============
+        animate();
+    </script>
+</body>
+</html>
